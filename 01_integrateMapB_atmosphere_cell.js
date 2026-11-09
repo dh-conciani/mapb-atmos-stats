@@ -28,6 +28,12 @@
  * Older script incorrectly suppressed draft creation when 40 unrelated tasks
  * were already active. ENFORCE_ACTIVE_CAP=false now fixes that.
  * GEE still decides actual server-side batch concurrency.
+ *
+ * V4 PROJECTION FIX (2026-11-09): All multiband 30m indicator stacks
+ * receive the 30m LULC native DEFAULT projection BEFORE reduceResolution.
+ * This prevents 'input does not have a valid default projection', including
+ * 1985-1987 when the logging bands are fully masked.
+ * No forced .reproject() of nationwide 30m input is performed.
  */
 
 // ==========================================================================
@@ -299,7 +305,9 @@ function loadActiveTasks() {
 
       if (state === 'PENDING' ||
           state === 'READY' ||
-          state === 'RUNNING') {
+          state === 'RUNNING' ||
+          state === 'CANCEL_REQUESTED' ||
+          state === 'CANCELLING') {
 
         activeTaskCount++;
 
@@ -504,16 +512,17 @@ function themeStack(lulc,fire,water,period) {
   return ee.Image.cat(images);
 }
 
-function loggingStack(y) {
+function loggingStack(y, lulcReference) {
   if (!INCLUDE_LOGGING || y < 1988) {
+    // Build fully masked placeholders ON THE NATIVE 30m LULC GRID.
+    // An ee.Image(0) constant alone has a coarse 1-degree projection.
+    // This preserves the two logging bands without contaminating the
+    // projection of the annual 30m indicator stack.
+    var noLogging = ee.Image(lulcReference)
+      .multiply(0).toByte().updateMask(ee.Image.constant(0));
     return ee.Image.cat([
-      ee.Image(0).toByte()
-        .updateMask(ee.Image(0))
-        .rename('logging_annual'),
-
-      ee.Image(0).toByte()
-        .updateMask(ee.Image(0))
-        .rename('logging_source_mask')
+      noLogging.rename('logging_annual'),
+      noLogging.rename('logging_source_mask')
     ]);
   }
 
@@ -536,14 +545,24 @@ function loggingStack(y) {
 // Stage and final reducers
 // --------------------------------------------------------------------------
 
-function stageReduce(byteImage) {
-  return ee.Image(byteImage).reduceResolution({
+function stageReduce(byteImage, nativeLulcProjection) {
+  // CRITICAL PROJECTION FIX:
+  // ee.Image.cat/addBands of LULC + Fire + Water + Logging can contain
+  // heterogeneous projections. reduceResolution requires one valid default.
+  // Set the default to the original 30m LULC projection BEFORE aggregation.
+  // This does NOT force a nationwide .reproject() computation or change the
+  // final export grid. Other 30m inputs use default nearest-neighbor sampling
+  // when they must be aligned to the LULC grid for pixelwise intersections.
+  var nativeStack = ee.Image(byteImage)
+    .setDefaultProjection(nativeLulcProjection);
+  return nativeStack.reduceResolution({
     reducer: ee.Reducer.mean(),
     bestEffort: false,
     maxPixels: STAGE_MAX_PIXELS
   }).set({
     processing_stage: 'national_intermediate',
     stage_grid_divisions: MID_DIVISIONS,
+    stage_source_projection: 'MapBiomas C11 native LULC band for year',
     stage_note: 'fine byte masks reduced to 0.1/12-degree fractions'
   });
 }
@@ -798,7 +817,8 @@ function lulcStage(y) {
           return groupMask(lulc,g);
         })
       )
-    )
+    ),
+    lulc.projection()
   ).set({
     source_year: y,
     stage_dataset: 'lulc'
@@ -816,7 +836,8 @@ function annualThemeStage(y) {
   );
 
   return stageReduce(
-    theme.addBands(loggingStack(y))
+    theme.addBands(loggingStack(y, lulc)),
+    lulc.projection()
   ).set({
     source_year: y,
     stage_dataset: 'annual_theme'
@@ -846,7 +867,7 @@ function monthThemeStage(y,pk) {
     );
   });
 
-  return stageReduce(ee.Image.cat(imgs)).set({
+  return stageReduce(ee.Image.cat(imgs), lulc.projection()).set({
     source_year: y,
     stage_dataset: 'monthly_theme',
     start_month: pk.start,
@@ -1517,4 +1538,5 @@ if (ACTION === 'AUDIT') {
   );
 }
 
+// V4: All stageReduce() inputs now have a native 30m LULC default projection.
 // END: switch BATCH from ANNUAL to MONTHLY only after annual outputs COMPLETE.
