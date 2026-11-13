@@ -1,6 +1,6 @@
 
 /**
- * MAPBIOMAS BRAZIL 1985-2024 | V3 | TWO PRODUCTION BATCHES
+ * MAPBIOMAS BRAZIL 1985-2025 | V3 | TWO PRODUCTION BATCHES
  *
  * ONLY TWO WORKFLOWS:
  *   BATCH='ANNUAL'  -> all annual LULC + annual theme staging, then annual assets.
@@ -29,6 +29,9 @@
  * were already active. ENFORCE_ACTIVE_CAP=false now fixes that.
  * GEE still decides actual server-side batch concurrency.
  *
+ * 2025 logging fix (2026-11-13): logging_2025 is not requested.
+ * Retain two masked bands for 2025 and preserve 17-band output schema.
+ *
  * V4 PROJECTION FIX (2026-11-09): All multiband 30m indicator stacks
  * receive the 30m LULC native DEFAULT projection BEFORE reduceResolution.
  * This prevents 'input does not have a valid default projection', including
@@ -43,8 +46,8 @@
 var BATCH = 'ANNUAL';            // 'ANNUAL' or 'MONTHLY'
 var ACTION = 'CREATE';           // 'PLAN', 'CREATE', 'AUDIT', 'VIRTUAL_QA'
 
-var YEAR_START = 1985;
-var YEAR_END = 2024;
+var YEAR_START = 2025;
+var YEAR_END = 2025;
 
 var MONTH_START = 1;             // Used for MONTHLY batch
 var MONTH_END = 12;
@@ -109,8 +112,8 @@ if (['ANNUAL','MONTHLY'].indexOf(BATCH) < 0)
 if (['PLAN','CREATE','AUDIT','VIRTUAL_QA'].indexOf(ACTION) < 0)
   throw new Error('ACTION must be PLAN, CREATE, AUDIT, or VIRTUAL_QA');
 
-if (YEAR_START < 1985 || YEAR_END > 2024 || YEAR_END < YEAR_START)
-  throw new Error('YEAR_START..YEAR_END must be within 1985..2024');
+if (YEAR_START < 1985 || YEAR_END > 2025 || YEAR_END < YEAR_START)
+  throw new Error('YEAR_START..YEAR_END must be within 1985..2025');
 
 if (MONTH_START < 1 || MONTH_END > 12 || MONTH_START > MONTH_END)
   throw new Error('MONTH_START / MONTH_END must be 1..12');
@@ -513,7 +516,9 @@ function themeStack(lulc,fire,water,period) {
 }
 
 function loggingStack(y, lulcReference) {
-  if (!INCLUDE_LOGGING || y < 1988) {
+  if (!INCLUDE_LOGGING || y < 1988 || y > 2024) {
+    // Logging source contains bands only for 1988-2024.
+    // For 2025 retain both bands as masked/no-data (NOT zero).
     // Build fully masked placeholders ON THE NATIVE 30m LULC GRID.
     // An ee.Image(0) constant alone has a coarse 1-degree projection.
     // This preserves the two logging bands without contaminating the
@@ -629,6 +634,7 @@ function finalMetadata(image,y,m,cadence) {
     reference_grid: 'MapBiomas Atmosphere C1 0.1-degree EPSG4326',
     climate_exported: false,
     logging_missing_before_1988: true,
+    logging_missing_after_2024: true,
 
     monthly_static_lulc: 'copied from completed annual V3 asset',
     monthly_fire_denominator:
