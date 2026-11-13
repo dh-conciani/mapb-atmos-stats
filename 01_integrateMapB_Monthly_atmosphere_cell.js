@@ -1,7 +1,7 @@
 /**
- * MAPBIOMAS BRAZIL | MONTHLY PRODUCTION | CODE EDITOR | V5
+ * MAPBIOMAS BRAZIL | MONTHLY 2025 | NO LOGGING | CODE EDITOR | V5.1
  * ========================================================
- * PURPOSE: complete the 480 monthly products (1985-2024) AFTER annual V3
+ * PURPOSE: create 2025 monthly products AFTER annual V3
  *           final assets and annual LULC intermediates have been exported.
  *
  * - Runs in Google's EARTH ENGINE CODE EDITOR (JavaScript, not Node/Python).
@@ -13,6 +13,8 @@
  * - 15 signed Int16 percentage bands. Stored integer = actual percent x 100.
  * - Fire in group = BURNED GROUP AREA / TOTAL GROUP AREA (not whole cell).
  * - No water-by-group intersections. Climate & heatwaves NOT duplicated.
+ * - NO LOGGING: monthly output has 15 bands and references NO logging source.
+ * - Requires completed 2025 annual final + 2025 intermediate LULC.
  *
  * NOTE: Code Editor does NOT automatically start batch tasks. After pressing
  * Run here, click Run on the newly created exports in the Tasks tab.
@@ -22,8 +24,8 @@
 
 // ======================== EDIT THESE SETTINGS ============================
 var ACTION = 'CREATE';                // 'PLAN' (preview only) or 'CREATE'
-var YEAR_START = 2023;                // First do a year as a test
-var YEAR_END = 2010;
+var YEAR_START = 1985;                // 2025 only
+var YEAR_END = 2025;
 var MONTH_START = 1;
 var MONTH_END = 12;
 var MAX_NEW_TASKS_PER_RUN = 12;       // Suggested 12; keep <= 24 initially
@@ -31,12 +33,12 @@ var CHECK_ACTIVE_SERVER_TASKS = true;
 
 var DEST_FOLDER = 'projects/mapbiomas-brazil/assets/DEGRADATION/' +
   'COLLECTION-11/atmosphere/test';
-// Later: 1985..1986, then 1987..1988, etc. Up to 24 monthly drafts/run.
+// Create 12 monthly intermediate drafts, then rerun when finished for 12 finals.
 // ========================================================================
 
 if (['CREATE','PLAN'].indexOf(ACTION) < 0) throw new Error('Invalid ACTION');
-if (YEAR_START < 1985 || YEAR_END > 2024 || YEAR_END < YEAR_START)
-  throw new Error('Year range must be 1985..2024');
+if (YEAR_START < 1985 || YEAR_END > 2025 || YEAR_END < YEAR_START)
+  throw new Error('Year range must be 1985..2025, with START <= END');
 if (MONTH_START < 1 || MONTH_END > 12 || MONTH_END < MONTH_START)
   throw new Error('Month range must be 1..12');
 if (MAX_NEW_TASKS_PER_RUN < 1 || MAX_NEW_TASKS_PER_RUN > 48)
@@ -250,7 +252,7 @@ var proposed = 0,skipped = 0,blocked = 0;
 for (var year=YEAR_START;year<=YEAR_END;year++) {
   if (proposed >= MAX_NEW_TASKS_PER_RUN) break;
   if (!annualOK(year)) {
-    print('BLOCKED YEAR: missing annual V3 final or intermediate LULC',year);
+    print('BLOCKED YEAR: first complete the 2025 final annual V3 asset AND the 2025 annual intermediate LULC asset:',year);
     blocked++;continue;
   }
   for (var month=MONTH_START;month<=MONTH_END;month++) {
@@ -279,3 +281,4 @@ print('Current selected years:',YEAR_START,'..',YEAR_END,
 print('IMPORTANT: Tasks are drafts; manually click Run in the Tasks tab.');
 print('After stages complete, run this SAME script again for final assets.');
 print('Final asset: 15 Int16 percentage bands on exact 0.1-degree grid.');
+print('NO LOGGING: 2025 monthly script never reads logging_v2 or logging_2025.');
